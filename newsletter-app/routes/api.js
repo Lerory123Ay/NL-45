@@ -4,13 +4,30 @@ const NewsletterEmail = require('../models/NewsletterEmail');
 
 // Subscribe
 router.post('/api/newsletter/subscribe', async (req, res) => {
-  const { email } = req.body;
-  if (!/\S+@\S+\.\S+/.test(email)) return res.status(400).json({ error: 'Invalid email format' });
+  const { email, country } = req.body;
 
+  // Validate email format
+  if (!/\S+@\S+\.\S+/.test(email)) {
+    return res.status(400).json({ error: 'Invalid email format' });
+  }
+
+  // Validate country (ensure it's not empty or just whitespace)
+  if (!country || country.trim() === '') {
+    return res.status(400).json({ error: 'Country is required' });
+  }
+
+  // Check if email already exists
   const existing = await NewsletterEmail.findOne({ where: { email } });
-  if (existing) return res.status(409).json({ error: 'Email already subscribed' });
+  if (existing) {
+    return res.status(409).json({ error: 'Email already subscribed' });
+  }
 
-  await NewsletterEmail.create({ email });
+  // Create new newsletter subscription
+  await NewsletterEmail.create({ 
+    email, 
+    country: country.trim() 
+  });
+
   res.status(201).json({ message: 'Subscription successful' });
 });
 

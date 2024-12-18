@@ -10,13 +10,18 @@ import secrets
 # Configuration and Initialization
 class Config:
     SECRET_KEY = os.environ.get('SECRET_KEY') or secrets.token_hex(16)
-    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL', 'sqlite:///newsletter.db')
+    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL')
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD')
 
 # Flask App Configuration
 app = Flask(__name__)
 app.config.from_object(Config)
+
+# Fix Heroku Postgres URL
+if app.config['SQLALCHEMY_DATABASE_URI'] and app.config['SQLALCHEMY_DATABASE_URI'].startswith('postgres://'):
+    app.config['SQLALCHEMY_DATABASE_URI'] = app.config['SQLALCHEMY_DATABASE_URI'].replace('postgres://', 'postgresql://')
+
 db = SQLAlchemy(app)
 
 # Forms
@@ -64,7 +69,8 @@ def login_required(func):
 def login():
     form = LoginForm()
     if form.validate_on_submit():
-        if check_password_hash(generate_password_hash(app.config['ADMIN_PASSWORD']), form.password.data):
+        # Use the admin password from config
+        if form.password.data == app.config['ADMIN_PASSWORD']:
             session['logged_in'] = True
             flash('Login successful', 'success')
             return redirect(url_for('dashboard'))

@@ -1,1 +1,2 @@
-
+npm init -y
+npm install express sequelize pg pg-hstore dotenv bcryptjs express-session body-parser

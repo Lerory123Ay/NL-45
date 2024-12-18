@@ -1,11 +1,8 @@
 from flask import Flask, request, jsonify, render_template, redirect, url_for, session, flash
 from flask_sqlalchemy import SQLAlchemy
-from flask_wtf import FlaskForm
-from wtforms import StringField, PasswordField
-from wtforms.validators import DataRequired, Email
-from werkzeug.security import generate_password_hash, check_password_hash
 import os
 import secrets
+import re
 
 # Configuration and Initialization
 class Config:
@@ -24,13 +21,6 @@ if app.config['SQLALCHEMY_DATABASE_URI'] and app.config['SQLALCHEMY_DATABASE_URI
 
 db = SQLAlchemy(app)
 
-# Forms
-class LoginForm(FlaskForm):
-    password = PasswordField('Password', validators=[DataRequired()])
-
-class EmailForm(FlaskForm):
-    email = StringField('Email', validators=[DataRequired(), Email()])
-
 # Models
 class NewsletterEmail(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -48,12 +38,10 @@ def create_tables():
 
 def validate_email(email):
     """Enhanced email validation."""
-    try:
-        from email_validator import validate_email, EmailNotValidError
-        validate_email(email)
-        return True
-    except EmailNotValidError:
+    if not email:
         return False
+    email_regex = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+    return re.match(email_regex, email) is not None
 
 # Authentication Decorator
 def login_required(func):
@@ -67,29 +55,38 @@ def login_required(func):
 # Routes
 @app.route('/', methods=['GET', 'POST'])
 def login():
-    form = LoginForm()
-    if form.validate_on_submit():
+    if request.method == 'POST':
+        password = request.form.get('password')
         # Use the admin password from config
-        if form.password.data == app.config['ADMIN_PASSWORD']:
+        if password == app.config['ADMIN_PASSWORD']:
             session['logged_in'] = True
             flash('Login successful', 'success')
             return redirect(url_for('dashboard'))
         else:
             flash('Invalid credentials', 'error')
-    return render_template('login.html', form=form)
+    return '''
+    <form method="post">
+        <input type="password" name="password" required>
+        <input type="submit" value="Login">
+    </form>
+    '''
 
 @app.route('/dashboard', methods=['GET', 'POST'])
 @login_required
 def dashboard():
-    email_form = EmailForm()
-    if email_form.validate_on_submit():
-        email = email_form.email.data
+    if request.method == 'POST':
+        email = request.form.get('email')
         if validate_email(email):
             try:
-                new_email = NewsletterEmail(email=email)
-                db.session.add(new_email)
-                db.session.commit()
-                flash(f'Email {email} added successfully', 'success')
+                # Check if email already exists
+                existing_email = NewsletterEmail.query.filter_by(email=email).first()
+                if existing_email:
+                    flash('Email already exists', 'error')
+                else:
+                    new_email = NewsletterEmail(email=email)
+                    db.session.add(new_email)
+                    db.session.commit()
+                    flash(f'Email {email} added successfully', 'success')
             except Exception as e:
                 db.session.rollback()
                 flash(f'Error adding email: {str(e)}', 'error')
@@ -97,7 +94,24 @@ def dashboard():
             flash('Invalid email format', 'error')
     
     emails = NewsletterEmail.query.order_by(NewsletterEmail.created_at.desc()).all()
-    return render_template('dashboard.html', emails=emails, email_form=email_form)
+    
+    return f'''
+    <h2>Dashboard</h2>
+    <h3>Add Email</h3>
+    <form method="post">
+        <input type="email" name="email" required>
+        <input type="submit" value="Add">
+    </form>
+    <h3>Emails</h3>
+    <table border="1">
+        <tr>
+            <th>Email</th>
+            <th>Action</th>
+        </tr>
+        {"".join(f'<tr><td>{email.email}</td><td><form method="post" action="/delete-email/{email.id}"><input type="submit" value="Delete"></form></td></tr>' for email in emails)}
+    </table>
+    <a href="/logout">Logout</a>
+    '''
 
 @app.route('/delete-email/<int:email_id>', methods=['POST'])
 @login_required
@@ -157,16 +171,8 @@ def unsubscribe_email():
         db.session.rollback()
         return jsonify({"error": f"An error occurred: {str(e)}"}), 500
 
-# Error Handlers
-@app.errorhandler(404)
-def page_not_found(e):
-    return render_template('404.html'), 404
-
-@app.errorhandler(500)
-def internal_server_error(e):
-    return render_template('500.html'), 500
-
 # Application Entry Point
 if __name__ == '__main__':
+    create_tables()
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)

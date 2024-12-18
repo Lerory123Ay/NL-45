@@ -1,3 +1,13 @@
+app.get('/', (req, res) => {
+    res.send(`
+        <h2>Login</h2>
+        <form method="POST" action="/login">
+            <input type="password" name="password" placeholder="Enter Admin Password" required />
+            <button type="submit">Login</button>
+        </form>
+    `);
+});
+
 const express = require('express');
 const bodyParser = require('body-parser');
 const sequelize = require('./config/db');

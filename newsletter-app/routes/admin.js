@@ -147,14 +147,42 @@ router.post('/delete-email/:id', loginRequired, async (req, res) => {
 
 // Export Emails
 router.get('/export-emails', loginRequired, async (req, res) => {
-  const emails = await NewsletterEmail.findAll();
-  const filePath = path.join(__dirname, '../exports/emails.txt');
-  const emailText = emails.map(e => e.email).join('\n');
+  try {
+    const emails = await NewsletterEmail.findAll();
+    
+    // Ensure exports directory exists
+    const exportDir = path.join(__dirname, '../exports');
+    if (!fs.existsSync(exportDir)) {
+      fs.mkdirSync(exportDir, { recursive: true });
+    }
 
-  fs.writeFileSync(filePath, emailText);
-  res.download(filePath, 'emails.txt', (err) => {
-    if (err) console.error(err);
-  });
+    const filePath = path.join(exportDir, 'emails.txt');
+    const emailText = emails.map(e => e.email).join('\n');
+
+    // Write file with error handling
+    fs.writeFile(filePath, emailText, (writeErr) => {
+      if (writeErr) {
+        console.error('Error writing export file:', writeErr);
+        return res.status(500).send('Error creating export file');
+      }
+
+      // Send file for download
+      res.download(filePath, 'newsletter_emails.txt', (downloadErr) => {
+        if (downloadErr) {
+          console.error('Error downloading file:', downloadErr);
+          res.status(500).send('Error downloading export file');
+        }
+
+        // Optional: Remove file after download
+        fs.unlink(filePath, (unlinkErr) => {
+          if (unlinkErr) console.error('Error removing export file:', unlinkErr);
+        });
+      });
+    });
+  } catch (error) {
+    console.error('Error exporting emails:', error);
+    res.status(500).send('Error retrieving emails for export');
+  }
 });
 
 // Logout

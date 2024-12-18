@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, render_template, redirect, url_for, session, flash
+from flask import Flask, request, jsonify, redirect, url_for, session, flash
 from flask_sqlalchemy import SQLAlchemy
 import os
 import secrets
@@ -38,16 +38,15 @@ def create_tables():
 
 def validate_email(email):
     """Enhanced email validation."""
-    if not email:
-        return False
     email_regex = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
     return re.match(email_regex, email) is not None
 
 # Authentication Decorator
 def login_required(func):
+    """Require login for specific routes."""
     def wrapper(*args, **kwargs):
         if not session.get('logged_in'):
-            flash('Please log in to access this page', 'error')
+            flash('Please log in to access this page.', 'error')
             return redirect(url_for('login'))
         return func(*args, **kwargs)
     return wrapper
@@ -57,16 +56,15 @@ def login_required(func):
 def login():
     if request.method == 'POST':
         password = request.form.get('password')
-        # Use the admin password from config
         if password == app.config['ADMIN_PASSWORD']:
             session['logged_in'] = True
-            flash('Login successful', 'success')
+            flash('Login successful!', 'success')
             return redirect(url_for('dashboard'))
-        else:
-            flash('Invalid credentials', 'error')
+        flash('Invalid credentials', 'error')
     return '''
+    <h2>Login</h2>
     <form method="post">
-        <input type="password" name="password" required>
+        <input type="password" name="password" placeholder="Enter password" required>
         <input type="submit" value="Login">
     </form>
     '''
@@ -74,41 +72,38 @@ def login():
 @app.route('/dashboard', methods=['GET', 'POST'])
 @login_required
 def dashboard():
+    """Admin Dashboard."""
     if request.method == 'POST':
         email = request.form.get('email')
-        if validate_email(email):
+        if not validate_email(email):
+            flash('Invalid email format.', 'error')
+        else:
             try:
-                # Check if email already exists
-                existing_email = NewsletterEmail.query.filter_by(email=email).first()
-                if existing_email:
-                    flash('Email already exists', 'error')
+                if NewsletterEmail.query.filter_by(email=email).first():
+                    flash('Email already exists!', 'error')
                 else:
-                    new_email = NewsletterEmail(email=email)
-                    db.session.add(new_email)
+                    db.session.add(NewsletterEmail(email=email))
                     db.session.commit()
-                    flash(f'Email {email} added successfully', 'success')
+                    flash('Email added successfully!', 'success')
             except Exception as e:
                 db.session.rollback()
-                flash(f'Error adding email: {str(e)}', 'error')
-        else:
-            flash('Invalid email format', 'error')
-    
-    emails = NewsletterEmail.query.order_by(NewsletterEmail.created_at.desc()).all()
-    
+                flash(f'Error: {e}', 'error')
+
+    emails = NewsletterEmail.query.all()
+    rows = "".join(
+        f'<tr><td>{email.email}</td>'
+        f'<td><form method="post" action="/delete-email/{email.id}">'
+        '<input type="submit" value="Delete"></form></td></tr>'
+        for email in emails
+    )
     return f'''
     <h2>Dashboard</h2>
-    <h3>Add Email</h3>
     <form method="post">
-        <input type="email" name="email" required>
+        <input type="email" name="email" placeholder="Add email" required>
         <input type="submit" value="Add">
     </form>
-    <h3>Emails</h3>
     <table border="1">
-        <tr>
-            <th>Email</th>
-            <th>Action</th>
-        </tr>
-        {"".join(f'<tr><td>{email.email}</td><td><form method="post" action="/delete-email/{email.id}"><input type="submit" value="Delete"></form></td></tr>' for email in emails)}
+        <tr><th>Email</th><th>Action</th></tr>{rows}
     </table>
     <a href="/logout">Logout</a>
     '''
@@ -116,49 +111,48 @@ def dashboard():
 @app.route('/delete-email/<int:email_id>', methods=['POST'])
 @login_required
 def delete_email(email_id):
+    """Delete email entry."""
     email_entry = NewsletterEmail.query.get_or_404(email_id)
     try:
         db.session.delete(email_entry)
         db.session.commit()
-        flash(f'Email {email_entry.email} deleted successfully', 'success')
+        flash(f'Email {email_entry.email} deleted.', 'success')
     except Exception as e:
         db.session.rollback()
-        flash(f'Error deleting email: {str(e)}', 'error')
+        flash(f'Error: {e}', 'error')
     return redirect(url_for('dashboard'))
 
 @app.route('/logout')
 def logout():
-    session.pop('logged_in', None)
-    flash('You have been logged out', 'success')
+    session.clear()
+    flash('Logged out.', 'success')
     return redirect(url_for('login'))
 
 # API Endpoints
 @app.route('/api/newsletter/subscribe', methods=['POST'])
 def subscribe_email():
+    """API to subscribe an email."""
     data = request.get_json()
     email = data.get('email')
-    
     if not validate_email(email):
         return jsonify({"error": "Invalid email format"}), 400
 
-    existing_email = NewsletterEmail.query.filter_by(email=email).first()
-    if existing_email:
+    if NewsletterEmail.query.filter_by(email=email).first():
         return jsonify({"error": "Email already subscribed"}), 409
 
     try:
-        new_email = NewsletterEmail(email=email)
-        db.session.add(new_email)
+        db.session.add(NewsletterEmail(email=email))
         db.session.commit()
         return jsonify({"message": "Subscription successful", "email": email}), 201
     except Exception as e:
         db.session.rollback()
-        return jsonify({"error": f"An error occurred: {str(e)}"}), 500
+        return jsonify({"error": f"Error: {e}"}), 500
 
 @app.route('/api/newsletter/unsubscribe', methods=['POST'])
 def unsubscribe_email():
+    """API to unsubscribe an email."""
     data = request.get_json()
     email = data.get('email')
-
     email_entry = NewsletterEmail.query.filter_by(email=email).first()
     if not email_entry:
         return jsonify({"error": "Email not found"}), 404
@@ -166,10 +160,10 @@ def unsubscribe_email():
     try:
         db.session.delete(email_entry)
         db.session.commit()
-        return jsonify({"message": f"Email {email} unsubscribed successfully"}), 200
+        return jsonify({"message": "Unsubscribed successfully"}), 200
     except Exception as e:
         db.session.rollback()
-        return jsonify({"error": f"An error occurred: {str(e)}"}), 500
+        return jsonify({"error": f"Error: {e}"}), 500
 
 # Application Entry Point
 if __name__ == '__main__':

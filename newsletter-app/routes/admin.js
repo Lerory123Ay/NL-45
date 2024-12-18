@@ -1,17 +1,23 @@
 const express = require('express');
 const router = express.Router();
-const bcrypt = require('bcryptjs');
+const { Op } = require('sequelize');
 const session = require('express-session');
 const NewsletterEmail = require('../models/NewsletterEmail');
 const fs = require('fs');
 const path = require('path');
+const csv = require('csv-writer').createObjectCsvWriter;
 require('dotenv').config();
 
+// Session Configuration
 router.use(
   session({
     secret: process.env.SECRET_KEY,
     resave: false,
-    saveUninitialized: true
+    saveUninitialized: true,
+    cookie: {
+      secure: process.env.NODE_ENV === 'production', // Use secure cookies in production
+      maxAge: 24 * 60 * 60 * 1000 // 24 hours
+    }
   })
 );
 
@@ -22,173 +28,438 @@ function loginRequired(req, res, next) {
 }
 
 // Login route
-router.get('/login', (req, res) =>
+router.get('/login', (req, res) => {
   res.send(`
-    <form method="post" style="margin: 50px;">
-      <input type="password" name="password" placeholder="Enter Password" required />
-      <button type="submit">Login</button>
-    </form>
-  `)
-);
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <title>Admin Login</title>
+      <style>
+        body {
+          font-family: Arial, sans-serif;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          height: 100vh;
+          margin: 0;
+          background-color: #f0f2f5;
+        }
+        .login-container {
+          background-color: white;
+          padding: 30px;
+          border-radius: 8px;
+          box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+          width: 300px;
+        }
+        input {
+          width: 100%;
+          padding: 10px;
+          margin: 10px 0;
+          border: 1px solid #ddd;
+          border-radius: 4px;
+        }
+        button {
+          width: 100%;
+          padding: 10px;
+          background-color: #4CAF50;
+          color: white;
+          border: none;
+          border-radius: 4px;
+          cursor: pointer;
+        }
+        button:hover {
+          background-color: #45a049;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="login-container">
+        <form method="post">
+          <input type="password" name="password" placeholder="Enter Password" required />
+          <button type="submit">Login</button>
+        </form>
+      </div>
+    </body>
+    </html>
+  `);
+});
 
+// Login POST route
 router.post('/login', (req, res) => {
   if (req.body.password === process.env.ADMIN_PASSWORD) {
     req.session.loggedIn = true;
     return res.redirect('/dashboard');
   }
-  res.send('Invalid credentials');
-});
-
-// Dashboard Route with UI
-router.get('/dashboard', loginRequired, async (req, res) => {
-  const emails = await NewsletterEmail.findAll();
-  const emailList = emails
-    .map((email) => `<tr>
-      <td>${email.email}</td>
-      <td>
-        <form method="POST" action="/delete-email/${email.id}" style="display:inline;">
-          <button type="submit">Delete</button>
-        </form>
-      </td>
-    </tr>`)
-    .join('');
-
-  res.send(`
+  res.status(401).send(`
     <!DOCTYPE html>
-    <html lang="en">
-    <head>
-      <meta charset="UTF-8" />
-      <title>Newsletter Dashboard</title>
-      <style>
-        body { font-family: Arial, sans-serif; margin: 20px; }
-        table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-        th, td { border: 1px solid #ddd; padding: 8px; text-align: center; }
-        th { background-color: #f2f2f2; }
-        form { margin: 10px 0; }
-        button { padding: 5px 10px; }
-        input { padding: 5px; margin-right: 10px; }
-        #popup { display: none; position: fixed; top: 20%; left: 35%; padding: 20px; background: white; border: 1px solid #ddd; box-shadow: 0 0 10px rgba(0,0,0,0.5); }
-        #popup form { display: flex; flex-direction: column; }
-      </style>
-      <script>
-        function openPopup() { document.getElementById('popup').style.display = 'block'; }
-        function closePopup() { document.getElementById('popup').style.display = 'none'; }
-      </script>
-    </head>
+    <html>
     <body>
-      <h1>Newsletter Dashboard</h1>
-      
-      <!-- Add Email Button -->
-      <button onclick="openPopup()">Add Email</button>
-
-      <!-- Search Box -->
-      <input type="text" id="searchBox" placeholder="Search Emails" onkeyup="searchEmails()" />
-      
-      <!-- Export Button -->
-      <form method="GET" action="/export-emails">
-        <button type="submit">Export Emails</button>
-      </form>
-
-      <!-- Email Table -->
-      <table>
-        <thead>
-          <tr>
-            <th>Email</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody id="emailTable">
-          ${emailList}
-        </tbody>
-      </table>
-
-      <!-- Add Email Popup -->
-      <div id="popup">
-        <h3>Add Email</h3>
-        <form method="POST" action="/dashboard">
-          <input type="email" name="email" placeholder="Enter email" required />
-          <button type="submit">Save</button>
-        </form>
-        <button onclick="closePopup()">Close</button>
-      </div>
-
       <script>
-        function searchEmails() {
-          const input = document.getElementById('searchBox').value.toLowerCase();
-          const rows = document.querySelectorAll('#emailTable tr');
-          rows.forEach(row => {
-            const email = row.querySelector('td')?.textContent.toLowerCase();
-            row.style.display = email && email.includes(input) ? '' : 'none';
-          });
-        }
+        alert('Invalid credentials');
+        window.location.href = '/login';
       </script>
     </body>
     </html>
   `);
 });
 
-// Add Email
-router.post('/dashboard', loginRequired, async (req, res) => {
-  const { email } = req.body;
-  if (!/\S+@\S+\.\S+/.test(email)) return res.status(400).send('Invalid email');
+// Dashboard Route with Enhanced Features
+router.get('/dashboard', loginRequired, async (req, res) => {
   try {
-    await NewsletterEmail.create({ email });
-    res.redirect('/dashboard');
-  } catch {
-    res.send('Email already exists');
+    // Search and Filtering
+    const searchTerm = req.query.search || '';
+    const country = req.query.country || '';
+    const startDate = req.query.startDate || '';
+    const endDate = req.query.endDate || '';
+
+    // Pagination
+    const page = parseInt(req.query.page) || 1;
+    const limit = 10;
+    const offset = (page - 1) * limit;
+
+    // Build where conditions
+    const whereConditions = {};
+    if (searchTerm) {
+      whereConditions.email = {
+        [Op.like]: `%${searchTerm}%`
+      };
+    }
+    if (country) {
+      whereConditions.country = country;
+    }
+    if (startDate && endDate) {
+      whereConditions.createdAt = {
+        [Op.between]: [new Date(startDate), new Date(endDate)]
+      };
+    }
+
+    // Fetch unique countries for filter dropdown
+    const countries = await NewsletterEmail.findAll({
+      attributes: [[sequelize.fn('DISTINCT', sequelize.col('country')), 'country']],
+      raw: true
+    });
+
+    // Fetch paginated and filtered emails
+    const { count, rows: emails } = await NewsletterEmail.findAndCountAll({
+      where: whereConditions,
+      limit,
+      offset,
+      order: [['createdAt', 'DESC']]
+    });
+
+    // Prepare email list for table
+    const emailList = emails
+      .map((email) => `
+        <tr>
+          <td>
+            <input type="checkbox" class="email-checkbox" data-id="${email.id}" />
+          </td>
+          <td>${email.email}</td>
+          <td>${email.country}</td>
+          <td>${new Date(email.createdAt).toLocaleDateString()}</td>
+          <td>
+            <form method="POST" action="/delete-email/${email.id}" style="display:inline;">
+              <button type="submit">Delete</button>
+            </form>
+          </td>
+        </tr>
+      `)
+      .join('');
+
+    // Prepare pagination links
+    const totalPages = Math.ceil(count / limit);
+    const paginationLinks = Array.from({length: totalPages}, (_, i) => 
+      `<a href="/dashboard?page=${i + 1}&search=${encodeURIComponent(searchTerm)}&country=${encodeURIComponent(country)}&startDate=${startDate}&endDate=${endDate}" ${page === i + 1 ? 'style="font-weight:bold;"' : ''}>${i + 1}</a>`
+    ).join(' ');
+
+    // Country dropdown options
+    const countryOptions = countries
+      .map(c => `<option value="${c.country}">${c.country}</option>`)
+      .join('');
+
+    res.send(`
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8" />
+        <title>Newsletter Dashboard</title>
+        <style>
+          body { font-family: Arial, sans-serif; margin: 20px; }
+          table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+          th, td { border: 1px solid #ddd; padding: 8px; text-align: center; }
+          th { background-color: #f2f2f2; }
+          .search-container { 
+            display: flex; 
+            gap: 10px; 
+            margin-bottom: 20px; 
+            align-items: center; 
+          }
+          .search-container input, 
+          .search-container select { 
+            padding: 5px; 
+            flex-grow: 1; 
+          }
+          .pagination a {
+            margin: 0 5px;
+            text-decoration: none;
+            color: black;
+          }
+          .export-link {
+            display: inline-block;
+            margin-top: 10px;
+            padding: 5px 10px;
+            background-color: #4CAF50;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+          }
+        </style>
+      </head>
+      <body>
+        <h1>Newsletter Dashboard</h1>
+        
+        <!-- Advanced Search and Filter -->
+        <div class="search-container">
+          <input 
+            type="text" 
+            id="searchInput" 
+            placeholder="Search emails..." 
+            value="${searchTerm}" 
+          />
+          <select id="countryFilter">
+            <option value="">All Countries</option>
+            ${countryOptions}
+          </select>
+          <input 
+            type="date" 
+            id="startDate" 
+            value="${startDate}" 
+            placeholder="Start Date" 
+          />
+          <input 
+            type="date" 
+            id="endDate" 
+            value="${endDate}" 
+            placeholder="End Date" 
+          />
+          <button id="searchButton">Search</button>
+          <button id="clearButton">Clear</button>
+        </div>
+
+        <!-- Bulk Actions -->
+        <div>
+          <button id="selectAllBtn">Select All</button>
+          <button id="deleteSelectedBtn">Delete Selected</button>
+          <a href="/export" class="export-link">Export Emails</a>
+          <a href="/logout" style="margin-left: 10px; color: red;">Logout</a>
+        </div>
+
+        <!-- Email Table -->
+        <table>
+          <thead>
+            <tr>
+              <th>
+                <input type="checkbox" id="masterCheckbox" />
+              </th>
+              <th>Email</th>
+              <th>Country</th>
+              <th>Subscription Date</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="emailTable">
+            ${emailList}
+          </tbody>
+        </table>
+
+        <!-- Pagination -->
+        <div class="pagination">
+          ${paginationLinks}
+        </div>
+
+        <script>
+          // Master Checkbox Logic
+          const masterCheckbox = document.getElementById('masterCheckbox');
+          const emailCheckboxes = document.querySelectorAll('.email-checkbox');
+
+          masterCheckbox.addEventListener('change', (e) => {
+            emailCheckboxes.forEach(checkbox => {
+              checkbox.checked = e.target.checked;
+            });
+          });
+
+          // Search and Filter Logic
+          document.getElementById('searchButton').addEventListener('click', () => {
+            const searchTerm = document.getElementById('searchInput').value;
+            const country = document.getElementById('countryFilter').value;
+            const startDate = document.getElementById('startDate').value;
+            const endDate = document.getElementById('endDate').value;
+
+            window.location.href = `/dashboard?search=${encodeURIComponent(searchTerm)}&country=${encodeURIComponent(country)}&startDate=${startDate}&endDate=${endDate}`;
+          });
+
+          // Clear Search
+          document.getElementById('clearButton').addEventListener('click', () => {
+            window.location.href = '/dashboard';
+          });
+
+          // Delete Selected Emails
+          document.getElementById('deleteSelectedBtn').addEventListener('click', async () => {
+            const selectedIds = Array.from(emailCheckboxes)
+              .filter(cb => cb.checked)
+              .map(cb => cb.dataset.id);
+
+            if (selectedIds.length === 0) {
+              alert('No emails selected');
+              return;
+            }
+
+            if (confirm(`Are you sure you want to delete ${selectedIds.length} email(s)?`)) {
+              try {
+                const response = await fetch('/delete-multiple-emails', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify({ ids: selectedIds })
+                });
+
+                if (response.ok) {
+                  window.location.reload();
+                } else {
+                  const errorData = await response.json();
+                  alert(errorData.error || 'Failed to delete emails');
+                }
+              } catch (error) {
+                console.error('Delete error:', error);
+                alert('An error occurred while deleting emails');
+              }
+            }
+          });
+        </script>
+      </body>
+      </html>
+    `);
+  } catch (error) {
+    console.error('Dashboard error:', error);
+    res.status(500).send('Error loading dashboard');
   }
 });
 
-// Delete Email
-router.post('/delete-email/:id', loginRequired, async (req, res) => {
-  await NewsletterEmail.destroy({ where: { id: req.params.id } });
-  res.redirect('/dashboard');
+// Route to handle multiple email deletion
+router.post('/delete-multiple-emails', loginRequired, async (req, res) => {
+  try {
+    const { ids } = req.body;
+
+    if (!ids || !Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({ error: 'No email IDs provided' });
+    }
+
+    // Perform bulk delete
+    const deleteResult = await NewsletterEmail.destroy({
+      where: {
+        id: {
+          [Op.in]: ids
+        }
+      }
+    });
+
+    res.json({ 
+      message: `Deleted ${deleteResult} email(s)`,
+      deletedCount: deleteResult 
+    });
+  } catch (error) {
+    console.error('Multiple email deletion error:', error);
+    res.status(500).json({ error: 'Failed to delete emails' });
+  }
 });
 
-// Export Emails
+// Route for individual email deletion (optional)
+router.post('/delete-email/:id', loginRequired, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const deleteResult = await NewsletterEmail.destroy({
+      where: { id: id }
+    });
+
+    if (deleteResult) {
+      res.redirect('/dashboard');
+    } else {
+      res.status(404).send('Email not found');
+    }
+  } catch (error) {
+    console.error('Single email deletion error:', error);
+    res.status(500).send('Error deleting email');
+  }
+});
+
+// Export Emails Route with Multiple Options
 router.get('/export-emails', loginRequired, async (req, res) => {
   try {
-    const emails = await NewsletterEmail.findAll();
-    
-    // Ensure exports directory exists
+    // Determine export type and filter
+    const exportType = req.query.type || 'all';
+    const country = req.query.country || null;
+
+    // Prepare export directory
     const exportDir = path.join(__dirname, '../exports');
     if (!fs.existsSync(exportDir)) {
       fs.mkdirSync(exportDir, { recursive: true });
     }
 
-    const filePath = path.join(exportDir, 'emails.txt');
-    const emailText = emails.map(e => e.email).join('\n');
+    // Build query conditions
+    const whereConditions = country ? { country } : {};
 
-    // Write file with error handling
-    fs.writeFile(filePath, emailText, (writeErr) => {
-      if (writeErr) {
-        console.error('Error writing export file:', writeErr);
-        return res.status(500).send('Error creating export file');
-      }
-
-      // Send file for download
-      res.download(filePath, 'newsletter_emails.txt', (downloadErr) => {
-        if (downloadErr) {
-          console.error('Error downloading file:', downloadErr);
-          res.status(500).send('Error downloading export file');
-        }
-
-        // Optional: Remove file after download
-        fs.unlink(filePath, (unlinkErr) => {
-          if (unlinkErr) console.error('Error removing export file:', unlinkErr);
-        });
-      });
+    // Fetch emails based on export type and country
+    const emails = await NewsletterEmail.findAll({
+      where: whereConditions,
+      attributes: ['email', 'country', 'createdAt']
     });
-  } catch (error) {
-    console.error('Error exporting emails:', error);
-    res.status(500).send('Error retrieving emails for export');
-  }
-});
 
-// Logout
-router.get('/logout', (req, res) => {
-  req.session.destroy();
-  res.redirect('/login');
-});
+    // Generate unique filename
+    const timestamp = new Date().toISOString().replace(/[:.]|/g, '-');
+    const baseFilename = country 
+      ? `newsletter_emails_${country}_${timestamp}` 
+      : `newsletter_emails_all_${timestamp}`;
 
-module.exports = router;
+    // Export options
+    const exportFormats = {
+      txt: () => {
+        const filePath = path.join(exportDir, `${baseFilename}.txt`);
+        const emailText = emails.map(e => `${e.email},${e.country}`).join('\n');
+        fs.writeFileSync(filePath, emailText);
+        return filePath;
+      },
+      csv: () => {
+        const filePath = path.join(exportDir, `${baseFilename}.csv`);
+        const csvWriter = csv({
+          path: filePath,
+          header: [
+            {id: 'email', title: 'EMAIL'},
+            {id: 'country', title: 'COUNTRY'},
+            {id: 'createdAt', title: 'SUBSCRIPTION DATE'}
+          ]
+        });
+        
+        const csvData = emails.map(email => ({
+          email: email.email,
+          country: email.country,
+          createdAt: email.createdAt.toISOString()
+        }));
+
+        csvWriter.writeRecords(csvData);
+        return filePath;
+      },
+      json: () => {
+        const filePath = path.join(exportDir, `${baseFilename}.json`);
+        fs.writeFileSync(filePath, JSON.stringify(emails, null, 2));
+        return filePath;
+      }
+    };
+
+    // Determine export format (default to txt)
+    const format = req.query.format || 'txt';
+    const filePath = exportFormats[format] ? exportFormats[format]() : exportFormats['txt']();
+
+    // Send file for

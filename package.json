@@ -6,7 +6,7 @@
     "python": "3.11.3"
   },
   "scripts": {
-    "start": "web: python app.py"
+    "start": "web: gunicorn app:app"
   },
   "keywords": [
     "flask",

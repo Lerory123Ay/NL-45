@@ -462,4 +462,176 @@ router.get('/export-emails', loginRequired, async (req, res) => {
     const format = req.query.format || 'txt';
     const filePath = exportFormats[format] ? exportFormats[format]() : exportFormats['txt']();
 
-    // Send file for
+    // Send file for download
+    res.download(filePath, path.basename(filePath), (err) => {
+      if (err) {
+        console.error('Download error:', err);
+        res.status(500).send('Error downloading file');
+      }
+      
+      // Optional: Remove file after download
+      fs.unlink(filePath, (unlinkErr) => {
+        if (unlinkErr) console.error('Error removing export file:', unlinkErr);
+      });
+    });
+
+  } catch (error) {
+    console.error('Export emails error:', error);
+    res.status(500).send('Error exporting emails');
+  }
+});
+
+// Export Form Route
+router.get('/export', loginRequired, async (req, res) => {
+  try {
+    // Fetch unique countries
+    const countries = await NewsletterEmail.findAll({
+      attributes: [[sequelize.fn('DISTINCT', sequelize.col('country')), 'country']],
+      raw: true
+    });
+
+    res.send(`
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+        <title>Export Emails</title>
+        <style>
+          body {
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+          }
+          .export-container {
+            background-color: #f9f9f9;
+            padding: 20px;
+            border-radius: 8px;
+          }
+          select, input {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+          }
+          button {
+            width: 100%;
+            padding: 10px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+          }
+          .back-link {
+            display: block;
+            margin-top: 15px;
+            text-align: center;
+            text-decoration: none;
+            color: #4CAF50;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="export-container">
+          <h2>Export Newsletter Emails</h2>
+          <form action="/export-emails" method="GET">
+            <label>Export Type:</label>
+            <select name="type">
+              <option value="all">All Emails</option>
+              <option value="country">By Country</option>
+            </select>
+
+            <label>Country (if applicable):</label>
+            <select name="country">
+              <option value="">Select Country</option>
+              ${countries.map(c => `<option value="${c.country}">${c.country}</option>`).join('')}
+            </select>
+
+            <label>Format:</label>
+            <select name="format">
+              <option value="txt">Text (.txt)</option>
+              <option value="csv">CSV (.csv)</option>
+              <option value="json">JSON (.json)</option>
+            </select>
+
+            <button type="submit">Export</button>
+          </form>
+          <a href="/dashboard" class="back-link">Back to Dashboard</a>
+        </div>
+      </body>
+      </html>
+    `);
+  } catch (error) {
+    console.error('Export form error:', error);
+    res.status(500).send('Error loading export form');
+  }
+});
+
+// Logout route
+router.get('/logout', (req, res) => {
+  req.session.destroy((err) => {
+    if (err) {
+      console.error('Logout error:', err);
+    }
+    res.redirect('/login');
+  });
+});
+
+// Single Email Deletion Route (optional, added for completeness)
+router.post('/delete-email/:id', loginRequired, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const deleteResult = await NewsletterEmail.destroy({
+      where: { id: id }
+    });
+
+    if (deleteResult) {
+      res.redirect('/dashboard');
+    } else {
+      res.status(404).send('Email not found');
+    }
+  } catch (error) {
+    console.error('Single email deletion error:', error);
+    res.status(500).send('Error deleting email');
+  }
+});
+
+// 404 Route (optional, but recommended)
+router.use((req, res, next) => {
+  res.status(404).send(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Page Not Found</title>
+      <style>
+        body { 
+          font-family: Arial, sans-serif; 
+          text-align: center; 
+          padding: 50px; 
+        }
+        .container {
+          max-width: 500px;
+          margin: 0 auto;
+          background: #f9f9f9;
+          padding: 20px;
+          border-radius: 8px;
+        }
+        a {
+          color: #4CAF50;
+          text-decoration: none;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <h1>404 - Page Not Found</h1>
+        <p>The page you are looking for does not exist.</p>
+        <p><a href="/dashboard">Return to Dashboard</a></p>
+      </div>
+    </body>
+    </html>
+  `);
+});
+
+module.exports = router;

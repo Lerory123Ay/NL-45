@@ -1,0 +1,19 @@
+{
+  "name": "newsletter-subscription-app",
+  "version": "1.0.0",
+  "description": "Flask Newsletter Subscription Dashboard",
+  "engines": {
+    "python": "3.11.3"
+  },
+  "scripts": {
+    "start": "web: python app.py"
+  },
+  "keywords": [
+    "flask",
+    "newsletter",
+    "subscription",
+    "python"
+  ],
+  "author": "Your Name",
+  "license": "ISC"
+}

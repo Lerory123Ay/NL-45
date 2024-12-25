@@ -291,12 +291,19 @@ router.get('/dashboard', loginRequired, async (req, res) => {
 
           // Search and Filter Logic
           document.getElementById('searchButton').addEventListener('click', () => {
-            const searchTerm = document.getElementById('searchInput').value;
-            const country = document.getElementById('countryFilter').value;
-            const startDate = document.getElementById('startDate').value;
-            const endDate = document.getElementById('endDate').value;
+          const searchTerm = document.getElementById('searchInput').value;
+          const country = document.getElementById('countryFilter').value;
+          const startDate = document.getElementById('startDate').value;
+          const endDate = document.getElementById('endDate').value;
 
-            window.location.href = `/dashboard?search=${encodeURIComponent(searchTerm)}&country=${encodeURIComponent(country)}&startDate=${startDate}&endDate=${endDate}`;
+          const searchParams = new URLSearchParams({
+            search: searchTerm,
+            country: country,
+            startDate: startDate,
+            endDate: endDate
+          });
+
+          window.location.href = `/dashboard?${searchParams.toString()}`;
           });
 
           // Clear Search

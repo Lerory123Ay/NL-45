@@ -303,8 +303,8 @@ router.get('/dashboard', loginRequired, async (req, res) => {
               endDate: endDate
             });
 
-          window.location.href = `/dashboard?${searchParams.toString()}`;
-        });
+            window.location.href = `/dashboard?${searchParams.toString()}`;
+          });
 
           // Clear Search
           document.getElementById('clearButton').addEventListener('click', () => {

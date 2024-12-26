@@ -10,15 +10,18 @@ const PORT = process.env.PORT || 5000;
 // Middleware
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
-app.use(session({
-  secret: process.env.SECRET_KEY || 'fallback-secret-key',
-  resave: false,
-  saveUninitialized: true,
-  cookie: { 
-    secure: process.env.NODE_ENV === 'production',
-    maxAge: 24 * 60 * 60 * 1000 
+app.use((req, res, next) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (token) {
+    try {
+      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-jwt-secret');
+      req.user = decoded;
+    } catch (err) {
+      // Invalid token - don't set req.user
+    }
   }
-}));
+  next();
+});
 
 // Routes
 app.use('/', adminRoutes);

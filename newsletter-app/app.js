@@ -1,5 +1,7 @@
 const express = require('express');
 const bodyParser = require('body-parser');
+const cookieParser = require('cookie-parser');
+app.use(cookieParser());
 const sequelize = require('./config/db');
 const adminRoutes = require('./routes/admin');
 const apiRoutes = require('./routes/api');

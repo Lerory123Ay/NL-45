@@ -13,14 +13,16 @@ const PORT = process.env.PORT || 5000;
 app.use(cookieParser());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
+// Replace the middleware in app.js (around line 16) with:
 app.use((req, res, next) => {
-  const token = req.headers.authorization?.split(' ')[1];
+  const token = req.cookies.token || req.headers.authorization?.split(' ')[1];
   if (token) {
     try {
       const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-jwt-secret');
       req.user = decoded;
     } catch (err) {
       // Invalid token - don't set req.user
+      res.clearCookie('token'); // Clear invalid cookie
     }
   }
   next();

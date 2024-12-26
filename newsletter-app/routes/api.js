@@ -3,7 +3,7 @@ const router = express.Router();
 const NewsletterEmail = require('../models/NewsletterEmail');
 
 // Subscribe
-router.post('/api/newsletter/subscribe', async (req, res) => {
+router.post('/newsletter/subscribe', async (req, res) => {
   const { email, country } = req.body;
 
   // Validate email format
@@ -32,7 +32,7 @@ router.post('/api/newsletter/subscribe', async (req, res) => {
 });
 
 // Unsubscribe
-router.post('/api/newsletter/unsubscribe', async (req, res) => {
+router.post('/newsletter/unsubscribe', async (req, res) => {
   const { email } = req.body;
   const deleted = await NewsletterEmail.destroy({ where: { email } });
   if (deleted) return res.json({ message: 'Unsubscribed successfully' });

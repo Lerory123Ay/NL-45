@@ -21,6 +21,7 @@
     "cookie-parser": "^1.4.6",
     "body-parser": "^1.20.2",
     "dotenv": "^16.0.3",
+    "validator": "^13.9.0",
     "cors": "^2.8.5"
   }
 }

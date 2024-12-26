@@ -4,6 +4,7 @@ const bodyParser = require('body-parser');
 const cookieParser = require('cookie-parser');
 const sequelize = require('./config/db');
 const adminRoutes = require('./routes/admin');
+const cors = require('cors');
 const apiRoutes = require('./routes/api');
 
 const app = express();
@@ -11,6 +12,7 @@ const PORT = process.env.PORT || 5000;
 
 // Middleware
 app.use(cookieParser());
+app.use(cors());
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: true }));
 // Replace the middleware in app.js (around line 16) with:

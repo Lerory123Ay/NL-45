@@ -9,7 +9,7 @@ router.post('/newsletter/subscribe', async (req, res) => {
 
   // Validate email format
   if (!validator.isEmail(email)) {
-  return res.status(400).json({ error: 'Invalid email format' });
+    return res.status(400).json({ error: 'Invalid email format' });
   }
 
   // Validate country (ensure it's not empty or just whitespace)

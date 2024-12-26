@@ -31,8 +31,8 @@ app.use((req, res, next) => {
 });
 
 // Routes
-app.use('/', adminRoutes);
 app.use('/api', apiRoutes);
+app.use('/', adminRoutes);
 
 // Initialize Database
 sequelize.sync().then(() => console.log('Database connected'));
